@@ -1,6 +1,7 @@
 """
 ZON-Radiance GPU Metrics Dashboard
 Construct CSS Theme (Matrix Green)
+Full metrics display - all 28 available columns
 """
 
 import streamlit as st
@@ -24,10 +25,8 @@ ELECTRICITY_RATE = 0.12  # $/kWh
 
 CONSTRUCT_CSS = """
 <style>
-    /* Import monospace font */
     @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap');
     
-    /* Root variables - Construct theme */
     :root {
         --nexus-primary: #00ff41;
         --nexus-secondary: #003b00;
@@ -42,20 +41,20 @@ CONSTRUCT_CSS = """
         --color-text: #c0c0c0;
         --color-cyan: #8be9fd;
         --color-purple: #bd93f9;
+        --color-orange: #f97316;
+        --color-pink: #ff79c6;
+        --color-yellow: #f1fa8c;
     }
     
-    /* Hide Streamlit branding */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
     
-    /* Main app background */
     .stApp {
         background: var(--nexus-bg);
         font-family: 'JetBrains Mono', monospace;
     }
     
-    /* Grid overlay effect */
     .stApp::before {
         content: '';
         position: fixed;
@@ -68,7 +67,6 @@ CONSTRUCT_CSS = """
         pointer-events: none;
     }
     
-    /* Dashboard title */
     .dashboard-title {
         color: var(--nexus-primary);
         font-size: 2em;
@@ -83,7 +81,6 @@ CONSTRUCT_CSS = """
         margin-bottom: 20px;
     }
     
-    /* Section headings */
     .section-heading {
         color: var(--nexus-primary);
         font-size: 1.1em;
@@ -94,7 +91,6 @@ CONSTRUCT_CSS = """
         letter-spacing: 0.1em;
     }
     
-    /* Latest reading card */
     .latest-card {
         background: rgba(0, 255, 65, 0.05);
         border: 1px solid var(--nexus-border);
@@ -109,18 +105,18 @@ CONSTRUCT_CSS = """
         margin-bottom: 15px;
     }
     
-    /* Metric cards */
     .metric-card {
         background: rgba(0, 0, 0, 0.4);
         border: 1px solid var(--nexus-border);
         border-radius: 6px;
         padding: 15px;
         text-align: center;
+        height: 100%;
     }
     
     .metric-label {
         color: var(--color-muted);
-        font-size: 0.75em;
+        font-size: 0.7em;
         text-transform: uppercase;
         letter-spacing: 0.05em;
         margin-bottom: 5px;
@@ -128,20 +124,31 @@ CONSTRUCT_CSS = """
     
     .metric-value {
         color: var(--nexus-primary);
-        font-size: 1.8em;
+        font-size: 1.6em;
+        font-weight: 700;
+    }
+    
+    .metric-value-sm {
+        color: var(--nexus-primary);
+        font-size: 1.2em;
         font-weight: 700;
     }
     
     .metric-delta {
-        font-size: 0.8em;
+        font-size: 0.75em;
         margin-top: 5px;
+    }
+    
+    .metric-sub {
+        font-size: 0.7em;
+        color: var(--color-muted);
+        margin-top: 3px;
     }
     
     .delta-up { color: var(--color-warn); }
     .delta-down { color: var(--color-ok); }
     .delta-flat { color: var(--color-muted); }
     
-    /* Status badges */
     .status-badge {
         display: inline-block;
         padding: 4px 12px;
@@ -158,46 +165,30 @@ CONSTRUCT_CSS = """
     .status-heavy { background: rgba(249, 115, 22, 0.2); color: #f97316; border: 1px solid #f97316; }
     .status-thermal { background: rgba(255, 85, 85, 0.2); color: #ff5555; border: 1px solid #ff5555; }
     
-    /* Thermal zones */
     .thermal-optimal { color: #22c55e; }
     .thermal-normal { color: #eab308; }
     .thermal-high { color: #f97316; }
     .thermal-critical { color: #ef4444; }
     
-    /* Info cards */
-    .info-card {
-        background: #1a1a2e;
-        border: 1px solid #222;
-        border-radius: 6px;
-        padding: 12px;
-        margin: 10px 0;
-    }
+    .text-cyan { color: var(--color-cyan); }
+    .text-purple { color: var(--color-purple); }
+    .text-orange { color: var(--color-orange); }
+    .text-pink { color: var(--color-pink); }
+    .text-yellow { color: var(--color-yellow); }
+    .text-ok { color: var(--color-ok); }
+    .text-warn { color: var(--color-warn); }
+    .text-error { color: var(--color-error); }
     
-    .info-card code {
-        color: var(--color-ok);
-    }
-    
-    /* Chart containers */
-    .chart-container {
-        background: rgba(0, 0, 0, 0.3);
-        border: 1px solid var(--nexus-border);
-        border-radius: 8px;
-        padding: 15px;
-        margin: 15px 0;
-    }
-    
-    /* Streamlit metric overrides */
     [data-testid="stMetricValue"] {
         color: var(--nexus-primary) !important;
     }
     
-    [data-testid="stMetricDelta"] svg {
-        display: none;
-    }
-    
-    /* Make charts use theme colors */
-    .stPlotlyChart {
-        background: transparent !important;
+    .mini-chart {
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid var(--nexus-border);
+        border-radius: 8px;
+        padding: 10px;
+        margin: 10px 0;
     }
 </style>
 """
@@ -231,6 +222,8 @@ def fetch_metrics(limit: int = 200) -> pd.DataFrame:
 
 def format_uptime(seconds: float) -> str:
     """Format uptime seconds to human readable."""
+    if not seconds:
+        return "N/A"
     days = int(seconds // 86400)
     hours = int((seconds % 86400) // 3600)
     minutes = int((seconds % 3600) // 60)
@@ -243,18 +236,31 @@ def format_uptime(seconds: float) -> str:
         return f"{minutes}m"
 
 
-def format_bytes(bytes_val: float) -> str:
+def format_bytes(bytes_val: float, precision: int = 1) -> str:
     """Format bytes to human readable."""
+    if bytes_val is None:
+        return "N/A"
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
         if abs(bytes_val) < 1024.0:
-            return f"{bytes_val:.1f} {unit}"
+            return f"{bytes_val:.{precision}f} {unit}"
         bytes_val /= 1024.0
-    return f"{bytes_val:.1f} PB"
+    return f"{bytes_val:.{precision}f} PB"
+
+
+def format_bps(bps: float) -> str:
+    """Format bits per second to human readable."""
+    if bps is None:
+        return "N/A"
+    for unit in ['bps', 'Kbps', 'Mbps', 'Gbps', 'Tbps']:
+        if abs(bps) < 1000.0:
+            return f"{bps:.1f} {unit}"
+        bps /= 1000.0
+    return f"{bps:.1f} Pbps"
 
 
 def get_delta_indicator(current: float, previous: float, unit: str = "", inverse: bool = False) -> str:
     """Generate delta indicator HTML."""
-    if previous is None or pd.isna(previous):
+    if previous is None or pd.isna(previous) or current is None or pd.isna(current):
         return '<span class="delta-flat">━ N/A</span>'
     
     diff = current - previous
@@ -262,7 +268,6 @@ def get_delta_indicator(current: float, previous: float, unit: str = "", inverse
     if abs(diff) < 0.01:
         return f'<span class="delta-flat">━ 0.0{unit}</span>'
     
-    # For power/temp, down is good (inverse=False means up is bad)
     if diff > 0:
         css_class = "delta-down" if inverse else "delta-up"
         arrow = "▲"
@@ -292,6 +297,8 @@ def classify_system_state(metrics: dict) -> tuple[str, str]:
 
 def get_thermal_class(temp: float) -> str:
     """Get CSS class for thermal zone."""
+    if temp is None:
+        return ''
     if temp < 60:
         return 'thermal-optimal'
     elif temp < 75:
@@ -315,13 +322,17 @@ def calculate_dynamic_range(data: list, padding_percent: float = 0.1, min_range:
     data_range = max_val - min_val
     
     if data_range < min_range:
-        # Tight scaling for stable data
         mean_val = (min_val + max_val) / 2
         return mean_val - min_range / 2, mean_val + min_range / 2
     else:
-        # Wider scaling with padding
         padding = data_range * padding_percent
         return min_val - padding, max_val + padding
+
+
+def safe_get(d: dict, key: str, default=0):
+    """Safely get a value from dict, returning default if None."""
+    val = d.get(key, default)
+    return default if val is None else val
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -332,9 +343,7 @@ def create_power_chart(df: pd.DataFrame):
     """Create power metrics chart with dynamic scaling."""
     import plotly.graph_objects as go
     
-    # Sort chronologically for chart
     df_chart = df.sort_values('ts')
-    
     y_min, y_max = calculate_dynamic_range(df_chart['gpu_power_total'].tolist(), min_range=20)
     
     fig = go.Figure()
@@ -349,7 +358,6 @@ def create_power_chart(df: pd.DataFrame):
         fillcolor='rgba(0, 255, 65, 0.1)'
     ))
     
-    # Add rolling average
     if len(df_chart) >= 5:
         rolling_avg = df_chart['gpu_power_total'].rolling(window=5).mean()
         fig.add_trace(go.Scatter(
@@ -365,24 +373,10 @@ def create_power_chart(df: pd.DataFrame):
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0.2)',
         margin=dict(l=50, r=20, t=30, b=50),
-        height=300,
-        yaxis=dict(
-            range=[y_min, y_max],
-            title='Watts',
-            gridcolor='rgba(0, 255, 65, 0.1)',
-            tickformat='.0f'
-        ),
-        xaxis=dict(
-            gridcolor='rgba(0, 255, 65, 0.1)',
-            title=''
-        ),
-        legend=dict(
-            orientation='h',
-            yanchor='bottom',
-            y=1.02,
-            xanchor='right',
-            x=1
-        ),
+        height=280,
+        yaxis=dict(range=[y_min, y_max], title='Watts', gridcolor='rgba(0, 255, 65, 0.1)', tickformat='.0f'),
+        xaxis=dict(gridcolor='rgba(0, 255, 65, 0.1)', title=''),
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
         showlegend=True
     )
     
@@ -394,14 +388,12 @@ def create_thermal_chart(df: pd.DataFrame):
     import plotly.graph_objects as go
     
     df_chart = df.sort_values('ts')
-    
     y_min, y_max = calculate_dynamic_range(df_chart['gpu_temp_avg'].tolist(), min_range=10)
     y_min = max(30, y_min)
     y_max = min(95, y_max)
     
     fig = go.Figure()
     
-    # Add thermal zone backgrounds
     if y_max > 60:
         fig.add_hrect(y0=60, y1=min(75, y_max), fillcolor="rgba(234, 179, 8, 0.1)", line_width=0)
     if y_max > 75:
@@ -409,7 +401,6 @@ def create_thermal_chart(df: pd.DataFrame):
     if y_max > 85:
         fig.add_hrect(y0=85, y1=y_max, fillcolor="rgba(239, 68, 68, 0.1)", line_width=0)
     
-    # Temperature line
     fig.add_trace(go.Scatter(
         x=df_chart['ts'],
         y=df_chart['gpu_temp_avg'],
@@ -420,7 +411,6 @@ def create_thermal_chart(df: pd.DataFrame):
         fillcolor='rgba(249, 115, 22, 0.1)'
     ))
     
-    # Thermal headroom line
     fig.add_trace(go.Scatter(
         x=df_chart['ts'],
         y=85 - df_chart['gpu_temp_avg'],
@@ -435,110 +425,170 @@ def create_thermal_chart(df: pd.DataFrame):
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0.2)',
         margin=dict(l=50, r=50, t=30, b=50),
-        height=300,
-        yaxis=dict(
-            range=[y_min, y_max],
-            title='Temperature (°C)',
-            gridcolor='rgba(0, 255, 65, 0.1)',
-            tickformat='.1f'
-        ),
-        yaxis2=dict(
-            title='Headroom (°C)',
-            overlaying='y',
-            side='right',
-            range=[0, 55],
-            gridcolor='rgba(0, 0, 0, 0)'
-        ),
-        xaxis=dict(
-            gridcolor='rgba(0, 255, 65, 0.1)',
-            title=''
-        ),
-        legend=dict(
-            orientation='h',
-            yanchor='bottom',
-            y=1.02,
-            xanchor='right',
-            x=1
-        )
+        height=280,
+        yaxis=dict(range=[y_min, y_max], title='Temperature (°C)', gridcolor='rgba(0, 255, 65, 0.1)', tickformat='.1f'),
+        yaxis2=dict(title='Headroom (°C)', overlaying='y', side='right', range=[0, 55], gridcolor='rgba(0, 0, 0, 0)'),
+        xaxis=dict(gridcolor='rgba(0, 255, 65, 0.1)', title=''),
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
     )
     
     return fig
 
 
-def create_resources_chart(df: pd.DataFrame):
-    """Create resource utilization chart."""
+def create_cpu_gpu_chart(df: pd.DataFrame):
+    """Create CPU and GPU utilization chart."""
     import plotly.graph_objects as go
-    from plotly.subplots import make_subplots
     
     df_chart = df.sort_values('ts')
     
-    fig = make_subplots(
-        rows=2, cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.1,
-        subplot_titles=('CPU & GPU Utilization (%)', 'Memory & Load')
-    )
+    fig = go.Figure()
     
-    # CPU utilization
     fig.add_trace(go.Scatter(
-        x=df_chart['ts'],
-        y=df_chart['cpu_percent'],
-        mode='lines',
-        name='CPU %',
+        x=df_chart['ts'], y=df_chart['cpu_percent'],
+        mode='lines', name='CPU %',
         line=dict(color='#8be9fd', width=2)
-    ), row=1, col=1)
+    ))
     
-    # GPU utilization
     fig.add_trace(go.Scatter(
-        x=df_chart['ts'],
-        y=df_chart['gpu_util_avg'],
-        mode='lines',
-        name='GPU Util %',
+        x=df_chart['ts'], y=df_chart['gpu_util_avg'],
+        mode='lines', name='GPU Util %',
         line=dict(color='#bd93f9', width=2)
-    ), row=1, col=1)
-    
-    # Memory percent
-    fig.add_trace(go.Scatter(
-        x=df_chart['ts'],
-        y=df_chart['mem_percent'],
-        mode='lines',
-        name='Memory %',
-        line=dict(color='#f1fa8c', width=2)
-    ), row=2, col=1)
-    
-    # Load average (scaled to fit)
-    if 'load1' in df_chart.columns:
-        # Normalize load to 0-100 range for display
-        max_load = df_chart['load1'].max()
-        if max_load > 0:
-            load_scaled = (df_chart['load1'] / max_load) * 50  # Scale to max 50%
-            fig.add_trace(go.Scatter(
-                x=df_chart['ts'],
-                y=load_scaled,
-                mode='lines',
-                name=f'Load 1m (scaled)',
-                line=dict(color='#ff79c6', width=1, dash='dash')
-            ), row=2, col=1)
+    ))
     
     fig.update_layout(
         template='plotly_dark',
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0.2)',
-        margin=dict(l=50, r=20, t=40, b=50),
-        height=400,
-        legend=dict(
-            orientation='h',
-            yanchor='bottom',
-            y=1.05,
-            xanchor='right',
-            x=1
-        )
+        margin=dict(l=50, r=20, t=30, b=50),
+        height=250,
+        yaxis=dict(range=[0, 100], title='Utilization %', gridcolor='rgba(0, 255, 65, 0.1)'),
+        xaxis=dict(gridcolor='rgba(0, 255, 65, 0.1)', title=''),
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
     )
     
-    # Update y-axes
-    fig.update_yaxes(gridcolor='rgba(0, 255, 65, 0.1)', row=1, col=1)
-    fig.update_yaxes(gridcolor='rgba(0, 255, 65, 0.1)', row=2, col=1)
-    fig.update_xaxes(gridcolor='rgba(0, 255, 65, 0.1)')
+    return fig
+
+
+def create_memory_chart(df: pd.DataFrame):
+    """Create memory utilization chart."""
+    import plotly.graph_objects as go
+    
+    df_chart = df.sort_values('ts')
+    y_min, y_max = calculate_dynamic_range(df_chart['mem_percent'].tolist(), min_range=5)
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=df_chart['ts'], y=df_chart['mem_percent'],
+        mode='lines', name='Memory %',
+        line=dict(color='#f1fa8c', width=2),
+        fill='tozeroy', fillcolor='rgba(241, 250, 140, 0.1)'
+    ))
+    
+    # GPU Memory (scaled to percentage of typical max ~80GB per GPU)
+    if 'gpu_mem_used_avg' in df_chart.columns:
+        gpu_mem_pct = (df_chart['gpu_mem_used_avg'] / 81920) * 100  # 80GB = 81920MB
+        fig.add_trace(go.Scatter(
+            x=df_chart['ts'], y=gpu_mem_pct,
+            mode='lines', name='GPU Mem %',
+            line=dict(color='#bd93f9', width=2, dash='dash')
+        ))
+    
+    fig.update_layout(
+        template='plotly_dark',
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0.2)',
+        margin=dict(l=50, r=20, t=30, b=50),
+        height=250,
+        yaxis=dict(range=[0, max(y_max, 25)], title='Memory %', gridcolor='rgba(0, 255, 65, 0.1)'),
+        xaxis=dict(gridcolor='rgba(0, 255, 65, 0.1)', title=''),
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
+    )
+    
+    return fig
+
+
+def create_load_chart(df: pd.DataFrame):
+    """Create load average chart with all three averages."""
+    import plotly.graph_objects as go
+    
+    df_chart = df.sort_values('ts')
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=df_chart['ts'], y=df_chart['load1'],
+        mode='lines', name='Load 1m',
+        line=dict(color='#ff79c6', width=2)
+    ))
+    
+    fig.add_trace(go.Scatter(
+        x=df_chart['ts'], y=df_chart['load5'],
+        mode='lines', name='Load 5m',
+        line=dict(color='#ffb86c', width=1.5)
+    ))
+    
+    fig.add_trace(go.Scatter(
+        x=df_chart['ts'], y=df_chart['load15'],
+        mode='lines', name='Load 15m',
+        line=dict(color='#6272a4', width=1)
+    ))
+    
+    y_min, y_max = calculate_dynamic_range(df_chart['load1'].tolist(), min_range=5)
+    
+    fig.update_layout(
+        template='plotly_dark',
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0.2)',
+        margin=dict(l=50, r=20, t=30, b=50),
+        height=250,
+        yaxis=dict(range=[max(0, y_min), y_max], title='Load Average', gridcolor='rgba(0, 255, 65, 0.1)'),
+        xaxis=dict(gridcolor='rgba(0, 255, 65, 0.1)', title=''),
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
+    )
+    
+    return fig
+
+
+def create_network_chart(df: pd.DataFrame):
+    """Create network I/O chart."""
+    import plotly.graph_objects as go
+    
+    df_chart = df.sort_values('ts')
+    
+    # Calculate rate of change (derivative) since values are cumulative
+    df_chart = df_chart.copy()
+    df_chart['net_recv_rate'] = df_chart['net_recv_bps'].diff() / df_chart['ts'].diff().dt.total_seconds()
+    df_chart['net_send_rate'] = df_chart['net_send_bps'].diff() / df_chart['ts'].diff().dt.total_seconds()
+    
+    # Filter out negative values (counter resets) and extreme outliers
+    df_chart.loc[df_chart['net_recv_rate'] < 0, 'net_recv_rate'] = None
+    df_chart.loc[df_chart['net_send_rate'] < 0, 'net_send_rate'] = None
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=df_chart['ts'], y=df_chart['net_recv_rate'] / 1e6,  # Convert to MB/s
+        mode='lines', name='Recv (MB/s)',
+        line=dict(color='#50fa7b', width=2)
+    ))
+    
+    fig.add_trace(go.Scatter(
+        x=df_chart['ts'], y=df_chart['net_send_rate'] / 1e6,  # Convert to MB/s
+        mode='lines', name='Send (MB/s)',
+        line=dict(color='#ff5555', width=2)
+    ))
+    
+    fig.update_layout(
+        template='plotly_dark',
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0.2)',
+        margin=dict(l=50, r=20, t=30, b=50),
+        height=250,
+        yaxis=dict(title='MB/s', gridcolor='rgba(0, 255, 65, 0.1)'),
+        xaxis=dict(gridcolor='rgba(0, 255, 65, 0.1)', title=''),
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
+    )
     
     return fig
 
@@ -555,12 +605,11 @@ def main():
         initial_sidebar_state="collapsed"
     )
     
-    # Inject Construct CSS
     st.markdown(CONSTRUCT_CSS, unsafe_allow_html=True)
     
     # Header
     st.markdown('<div class="dashboard-title">⚡ ZON-RADIANCE METRICS</div>', unsafe_allow_html=True)
-    st.markdown('<div class="dashboard-subtitle">bizon1 • 8× NVIDIA H100 • Real-Time Monitoring</div>', unsafe_allow_html=True)
+    st.markdown('<div class="dashboard-subtitle">bizon1 • 8× NVIDIA H100 • Real-Time Monitoring • All 28 Metrics</div>', unsafe_allow_html=True)
     
     # Fetch data
     with st.spinner("Loading metrics..."):
@@ -570,7 +619,6 @@ def main():
         st.error("No data available. Check Supabase connection and RLS policies.")
         st.stop()
     
-    # Get latest and previous readings
     latest = df.iloc[0].to_dict()
     previous = df.iloc[1].to_dict() if len(df) > 1 else None
     
@@ -580,7 +628,6 @@ def main():
     
     st.markdown('<div class="section-heading">📡 Latest Reading</div>', unsafe_allow_html=True)
     
-    # Timestamp and system state
     ts = latest.get('ts')
     if isinstance(ts, str):
         ts = pd.to_datetime(ts)
@@ -600,130 +647,254 @@ def main():
     with col_state:
         st.markdown(f'<span class="status-badge {state_class}">{state_label}</span>', unsafe_allow_html=True)
     
-    # Metric cards
-    col1, col2, col3, col4 = st.columns(4)
+    # Primary metrics row
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
     
     with col1:
-        power = latest.get('gpu_power_total', 0)
-        prev_power = previous.get('gpu_power_total') if previous else None
+        power = safe_get(latest, 'gpu_power_total')
+        prev_power = safe_get(previous, 'gpu_power_total') if previous else None
         delta = get_delta_indicator(power, prev_power, 'W')
         st.markdown(f'''
             <div class="metric-card">
                 <div class="metric-label">GPU Power</div>
                 <div class="metric-value">{power:.1f}W</div>
-                <div class="metric-delta">{delta} (vs prev)</div>
+                <div class="metric-delta">{delta}</div>
             </div>
         ''', unsafe_allow_html=True)
     
     with col2:
-        temp = latest.get('gpu_temp_avg', 0)
-        prev_temp = previous.get('gpu_temp_avg') if previous else None
+        temp = safe_get(latest, 'gpu_temp_avg')
+        prev_temp = safe_get(previous, 'gpu_temp_avg') if previous else None
         delta = get_delta_indicator(temp, prev_temp, '°C')
         thermal_class = get_thermal_class(temp)
         st.markdown(f'''
             <div class="metric-card">
                 <div class="metric-label">GPU Temp</div>
                 <div class="metric-value {thermal_class}">{temp:.1f}°C</div>
-                <div class="metric-delta">{delta} (vs prev)</div>
+                <div class="metric-delta">{delta}</div>
             </div>
         ''', unsafe_allow_html=True)
     
     with col3:
-        cpu = latest.get('cpu_percent', 0)
-        prev_cpu = previous.get('cpu_percent') if previous else None
+        cpu = safe_get(latest, 'cpu_percent')
+        prev_cpu = safe_get(previous, 'cpu_percent') if previous else None
         delta = get_delta_indicator(cpu, prev_cpu, '%')
         st.markdown(f'''
             <div class="metric-card">
                 <div class="metric-label">CPU</div>
                 <div class="metric-value">{cpu:.1f}%</div>
-                <div class="metric-delta">{delta} (vs prev)</div>
+                <div class="metric-delta">{delta}</div>
             </div>
         ''', unsafe_allow_html=True)
     
     with col4:
-        mem = latest.get('mem_percent', 0)
-        prev_mem = previous.get('mem_percent') if previous else None
+        mem = safe_get(latest, 'mem_percent')
+        prev_mem = safe_get(previous, 'mem_percent') if previous else None
         delta = get_delta_indicator(mem, prev_mem, '%')
         st.markdown(f'''
             <div class="metric-card">
                 <div class="metric-label">Memory</div>
                 <div class="metric-value">{mem:.1f}%</div>
-                <div class="metric-delta">{delta} (vs prev)</div>
+                <div class="metric-delta">{delta}</div>
+            </div>
+        ''', unsafe_allow_html=True)
+    
+    with col5:
+        gpu_util = safe_get(latest, 'gpu_util_avg')
+        prev_gpu = safe_get(previous, 'gpu_util_avg') if previous else None
+        delta = get_delta_indicator(gpu_util, prev_gpu, '%')
+        st.markdown(f'''
+            <div class="metric-card">
+                <div class="metric-label">GPU Util</div>
+                <div class="metric-value text-purple">{gpu_util:.1f}%</div>
+                <div class="metric-delta">{delta}</div>
+            </div>
+        ''', unsafe_allow_html=True)
+    
+    with col6:
+        gpu_mem = safe_get(latest, 'gpu_mem_used_avg')
+        st.markdown(f'''
+            <div class="metric-card">
+                <div class="metric-label">GPU Mem</div>
+                <div class="metric-value text-cyan">{gpu_mem:.0f}MB</div>
+                <div class="metric-sub">per GPU avg</div>
             </div>
         ''', unsafe_allow_html=True)
     
     st.markdown("<br>", unsafe_allow_html=True)
     
     # ═══════════════════════════════════════════════════════════
-    # SECTION 2: ADVANCED METRICS (Radiance Optimizer)
+    # SECTION 2: RADIANCE OPTIMIZER METRICS
     # ═══════════════════════════════════════════════════════════
     
     st.markdown('<div class="section-heading">🧠 Radiance Optimizer Metrics</div>', unsafe_allow_html=True)
     
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     
-    # Power Efficiency Ratio (PER)
     with col1:
-        power = latest.get('gpu_power_total', 0) or 0
-        cpu = latest.get('cpu_percent', 0) or 0
-        gpu_util = latest.get('gpu_util_avg', 0) or 0
+        power = safe_get(latest, 'gpu_power_total')
+        cpu = safe_get(latest, 'cpu_percent')
+        gpu_util = safe_get(latest, 'gpu_util_avg')
         total_util = max(1, cpu + gpu_util)
         per = power / total_util
-        
         st.markdown(f'''
             <div class="metric-card">
                 <div class="metric-label">Power Efficiency Ratio</div>
-                <div class="metric-value">{per:.1f}</div>
-                <div class="metric-delta" style="color: #555;">W per % utilization</div>
+                <div class="metric-value-sm">{per:.1f}</div>
+                <div class="metric-sub">W per % util</div>
             </div>
         ''', unsafe_allow_html=True)
     
-    # Thermal Headroom
     with col2:
-        temp = latest.get('gpu_temp_avg', 0) or 0
+        temp = safe_get(latest, 'gpu_temp_avg')
         headroom = 85 - temp
         headroom_class = 'thermal-optimal' if headroom > 30 else ('thermal-normal' if headroom > 15 else ('thermal-high' if headroom > 5 else 'thermal-critical'))
-        
         st.markdown(f'''
             <div class="metric-card">
                 <div class="metric-label">Thermal Headroom</div>
-                <div class="metric-value {headroom_class}">{headroom:.1f}°C</div>
-                <div class="metric-delta" style="color: #555;">until throttle (85°C)</div>
+                <div class="metric-value-sm {headroom_class}">{headroom:.1f}°C</div>
+                <div class="metric-sub">until throttle</div>
             </div>
         ''', unsafe_allow_html=True)
     
-    # Energy Cost (Hourly)
     with col3:
-        power = latest.get('gpu_power_total', 0) or 0
+        power = safe_get(latest, 'gpu_power_total')
         cost_per_hour = (power / 1000) * ELECTRICITY_RATE
         cost_per_day = cost_per_hour * 24
-        cost_per_month = cost_per_day * 30
-        
         st.markdown(f'''
             <div class="metric-card">
                 <div class="metric-label">Energy Cost</div>
-                <div class="metric-value" style="color: #f1fa8c;">${cost_per_hour:.2f}/hr</div>
-                <div class="metric-delta" style="color: #555;">${cost_per_day:.2f}/day • ${cost_per_month:.0f}/mo</div>
+                <div class="metric-value-sm text-yellow">${cost_per_hour:.2f}/hr</div>
+                <div class="metric-sub">${cost_per_day:.2f}/day</div>
             </div>
         ''', unsafe_allow_html=True)
     
-    # GPU Utilization (simplified load metric since we don't have per-GPU data)
     with col4:
-        gpu_util = latest.get('gpu_util_avg', 0) or 0
-        gpu_count = latest.get('gpu_count', 8) or 8
-        
+        load1 = safe_get(latest, 'load1')
+        load5 = safe_get(latest, 'load5')
+        load15 = safe_get(latest, 'load15')
         st.markdown(f'''
             <div class="metric-card">
-                <div class="metric-label">GPU Fleet</div>
-                <div class="metric-value" style="color: #bd93f9;">{gpu_util:.1f}%</div>
-                <div class="metric-delta" style="color: #555;">{gpu_count}× H100 avg util</div>
+                <div class="metric-label">Load Average</div>
+                <div class="metric-value-sm text-pink">{load1:.1f}</div>
+                <div class="metric-sub">{load5:.1f} / {load15:.1f}</div>
+            </div>
+        ''', unsafe_allow_html=True)
+    
+    with col5:
+        disk = safe_get(latest, 'disk_root_percent')
+        disk_class = 'text-ok' if disk < 70 else ('text-warn' if disk < 85 else 'text-error')
+        st.markdown(f'''
+            <div class="metric-card">
+                <div class="metric-label">Disk Usage</div>
+                <div class="metric-value-sm {disk_class}">{disk:.1f}%</div>
+                <div class="metric-sub">root partition</div>
             </div>
         ''', unsafe_allow_html=True)
     
     st.markdown("<br>", unsafe_allow_html=True)
     
     # ═══════════════════════════════════════════════════════════
-    # SECTION 3: POWER CHART
+    # SECTION 3: MEMORY & SWAP DETAILS
+    # ═══════════════════════════════════════════════════════════
+    
+    st.markdown('<div class="section-heading">💾 Memory & Swap Details</div>', unsafe_allow_html=True)
+    
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    
+    with col1:
+        mem_total = safe_get(latest, 'mem_total_bytes')
+        st.markdown(f'''
+            <div class="metric-card">
+                <div class="metric-label">Total RAM</div>
+                <div class="metric-value-sm">{format_bytes(mem_total)}</div>
+            </div>
+        ''', unsafe_allow_html=True)
+    
+    with col2:
+        mem_used = safe_get(latest, 'mem_used_bytes')
+        st.markdown(f'''
+            <div class="metric-card">
+                <div class="metric-label">Used RAM</div>
+                <div class="metric-value-sm text-orange">{format_bytes(mem_used)}</div>
+            </div>
+        ''', unsafe_allow_html=True)
+    
+    with col3:
+        mem_avail = safe_get(latest, 'mem_available_bytes')
+        st.markdown(f'''
+            <div class="metric-card">
+                <div class="metric-label">Available RAM</div>
+                <div class="metric-value-sm text-ok">{format_bytes(mem_avail)}</div>
+            </div>
+        ''', unsafe_allow_html=True)
+    
+    with col4:
+        swap_total = safe_get(latest, 'swap_total_bytes')
+        st.markdown(f'''
+            <div class="metric-card">
+                <div class="metric-label">Total Swap</div>
+                <div class="metric-value-sm">{format_bytes(swap_total)}</div>
+            </div>
+        ''', unsafe_allow_html=True)
+    
+    with col5:
+        swap_used = safe_get(latest, 'swap_used_bytes')
+        st.markdown(f'''
+            <div class="metric-card">
+                <div class="metric-label">Used Swap</div>
+                <div class="metric-value-sm text-cyan">{format_bytes(swap_used)}</div>
+            </div>
+        ''', unsafe_allow_html=True)
+    
+    with col6:
+        swap_pct = safe_get(latest, 'swap_percent')
+        swap_class = 'text-ok' if swap_pct < 20 else ('text-warn' if swap_pct < 50 else 'text-error')
+        st.markdown(f'''
+            <div class="metric-card">
+                <div class="metric-label">Swap %</div>
+                <div class="metric-value-sm {swap_class}">{swap_pct:.1f}%</div>
+            </div>
+        ''', unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # ═══════════════════════════════════════════════════════════
+    # SECTION 4: NETWORK I/O
+    # ═══════════════════════════════════════════════════════════
+    
+    st.markdown('<div class="section-heading">🌐 Network I/O</div>', unsafe_allow_html=True)
+    
+    col1, col2 = st.columns([1, 1])
+    
+    with col1:
+        net_recv = safe_get(latest, 'net_recv_bps')
+        net_send = safe_get(latest, 'net_send_bps')
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown(f'''
+                <div class="metric-card">
+                    <div class="metric-label">Total Received</div>
+                    <div class="metric-value-sm text-ok">{format_bytes(net_recv)}</div>
+                    <div class="metric-sub">cumulative</div>
+                </div>
+            ''', unsafe_allow_html=True)
+        with c2:
+            st.markdown(f'''
+                <div class="metric-card">
+                    <div class="metric-label">Total Sent</div>
+                    <div class="metric-value-sm text-error">{format_bytes(net_send)}</div>
+                    <div class="metric-sub">cumulative</div>
+                </div>
+            ''', unsafe_allow_html=True)
+    
+    with col2:
+        network_fig = create_network_chart(df)
+        st.plotly_chart(network_fig, use_container_width=True, config={'displayModeBar': False})
+    
+    # ═══════════════════════════════════════════════════════════
+    # SECTION 5: POWER CHART
     # ═══════════════════════════════════════════════════════════
     
     st.markdown('<div class="section-heading">⚡ Power Consumption</div>', unsafe_allow_html=True)
@@ -731,17 +902,19 @@ def main():
     power_fig = create_power_chart(df)
     st.plotly_chart(power_fig, use_container_width=True, config={'displayModeBar': False})
     
-    # Power stats row
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("Current", f"{latest.get('gpu_power_total', 0):.1f} W")
+        st.metric("Current", f"{safe_get(latest, 'gpu_power_total'):.1f} W")
     with col2:
-        st.metric("Peak (session)", f"{df['gpu_power_total'].max():.1f} W")
+        st.metric("Peak", f"{df['gpu_power_total'].max():.1f} W")
     with col3:
         st.metric("Average", f"{df['gpu_power_total'].mean():.1f} W")
+    with col4:
+        per_gpu = safe_get(latest, 'gpu_power_avg')
+        st.metric("Per GPU Avg", f"{per_gpu:.1f} W")
     
     # ═══════════════════════════════════════════════════════════
-    # SECTION 4: THERMAL CHART
+    # SECTION 6: THERMAL CHART
     # ═══════════════════════════════════════════════════════════
     
     st.markdown('<div class="section-heading">🌡️ Thermal Monitoring</div>', unsafe_allow_html=True)
@@ -749,7 +922,6 @@ def main():
     thermal_fig = create_thermal_chart(df)
     st.plotly_chart(thermal_fig, use_container_width=True, config={'displayModeBar': False})
     
-    # Thermal legend
     st.markdown('''
         <div style="display: flex; gap: 20px; font-size: 0.8em; margin-top: -10px; margin-bottom: 20px;">
             <span class="thermal-optimal">🟢 Optimal (&lt;60°C)</span>
@@ -760,24 +932,42 @@ def main():
     ''', unsafe_allow_html=True)
     
     # ═══════════════════════════════════════════════════════════
-    # SECTION 5: RESOURCES CHART
+    # SECTION 7: CPU & GPU UTILIZATION
     # ═══════════════════════════════════════════════════════════
     
-    st.markdown('<div class="section-heading">📊 Resource Utilization</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-heading">📊 CPU & GPU Utilization</div>', unsafe_allow_html=True)
     
-    resources_fig = create_resources_chart(df)
-    st.plotly_chart(resources_fig, use_container_width=True, config={'displayModeBar': False})
+    cpu_gpu_fig = create_cpu_gpu_chart(df)
+    st.plotly_chart(cpu_gpu_fig, use_container_width=True, config={'displayModeBar': False})
     
     # ═══════════════════════════════════════════════════════════
-    # SECTION 6: SYSTEM INFO
+    # SECTION 8: MEMORY CHART
+    # ═══════════════════════════════════════════════════════════
+    
+    st.markdown('<div class="section-heading">🧠 Memory Utilization</div>', unsafe_allow_html=True)
+    
+    memory_fig = create_memory_chart(df)
+    st.plotly_chart(memory_fig, use_container_width=True, config={'displayModeBar': False})
+    
+    # ═══════════════════════════════════════════════════════════
+    # SECTION 9: LOAD AVERAGE
+    # ═══════════════════════════════════════════════════════════
+    
+    st.markdown('<div class="section-heading">📈 Load Average</div>', unsafe_allow_html=True)
+    
+    load_fig = create_load_chart(df)
+    st.plotly_chart(load_fig, use_container_width=True, config={'displayModeBar': False})
+    
+    # ═══════════════════════════════════════════════════════════
+    # SECTION 10: SYSTEM INFO
     # ═══════════════════════════════════════════════════════════
     
     st.markdown('<div class="section-heading">ℹ️ System Information</div>', unsafe_allow_html=True)
     
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
-        uptime = latest.get('uptime_sec', 0)
+        uptime = safe_get(latest, 'uptime_sec')
         st.metric("Uptime", format_uptime(uptime))
     
     with col2:
@@ -788,14 +978,21 @@ def main():
         st.metric("Server", host)
     
     with col4:
-        gpu_count = latest.get('gpu_count', 8)
+        gpu_count = safe_get(latest, 'gpu_count', 8)
         st.metric("GPUs", f"{gpu_count}× H100")
     
-    # Footer with refresh info
+    with col5:
+        machine_id = latest.get('machine_id', 'N/A')
+        if machine_id and machine_id != 'N/A':
+            st.metric("Machine ID", machine_id[:12] + "...")
+        else:
+            st.metric("Machine ID", "N/A")
+    
+    # Footer
     st.markdown(f'''
-        <div style="text-align: center; color: #555; font-size: 0.75em; margin-top: 30px; padding: 20px;">
-            ZON-Radiance Dashboard • Auto-refresh every {REFRESH_INTERVAL}s • 
-            Data range: {df['ts'].min().strftime("%H:%M")} - {df['ts'].max().strftime("%H:%M")} UTC
+        <div style="text-align: center; color: #555; font-size: 0.75em; margin-top: 30px; padding: 20px; border-top: 1px solid #222;">
+            ZON-Radiance Dashboard v2.0 • Displaying all 28 available metrics • Auto-refresh every {REFRESH_INTERVAL}s<br>
+            Data range: {df['ts'].min().strftime("%Y-%m-%d %H:%M")} - {df['ts'].max().strftime("%Y-%m-%d %H:%M")} UTC
         </div>
     ''', unsafe_allow_html=True)
     
